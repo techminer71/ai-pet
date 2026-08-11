@@ -46,6 +46,20 @@ class NPCAgent:
     def update_target_network(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
+    def save(self, path):
+        torch.save({
+            "model_state": self.model.state_dict(),
+            "optimizer_state": self.optimizer.state_dict(),
+            "epsilon": self.epsilon,
+        }, path)
+
+    def load(self, path):
+        checkpoint = torch.load(path, map_location="cpu")
+        self.model.load_state_dict(checkpoint["model_state"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+        self.epsilon = checkpoint["epsilon"]
+        self.update_target_network()
+
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 

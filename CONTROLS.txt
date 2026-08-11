@@ -1,0 +1,25 @@
+AI Pet - Controls
+=================
+
+Mouse move        Pet follows your cursor whenever it doesn't need
+                   anything more urgent (food/water/toy/rest).
+Click the pet      Pet it! Boosts happiness (small cooldown between
+                   clicks so spam-clicking doesn't max it out instantly).
+Click "Toy"        Drop (or re-throw) the toy at a random spot on the
+button (top-right)  ground. Once the pet gets bored enough, it'll go
+                   play with it - playing also raises happiness.
+Close window (X)   Quit. Progress (the pet's trained brain + personality)
+                   auto-saves every 30 seconds while playing, and saves
+                   again on close.
+Esc                Also quits, in case the window's close button doesn't
+                   register on your window manager.
+
+Needs (bars, top-left): hunger, thirst, boredom, tiredness. Each rises over
+time; the pet will automatically go handle whichever is most urgent once it
+crosses its threshold (or, for tiredness, just stop and rest in place).
+Happiness is different - it's not something the pet seeks out on its own,
+it just drifts down when ignored and goes up from play/petting.
+
+Not implemented yet (ideas for later):
+- Feed or water the pet directly by clicking the food/water items
+- Keyboard movement or jumping
