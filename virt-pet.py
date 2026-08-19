@@ -7,6 +7,7 @@ import pygame
 from npc import npc, GROUND_Y, SAVE_DIR
 import items
 from items import item
+from wallet import Wallet
 
 # pygame setup
 pygame.init()
@@ -17,16 +18,21 @@ title_font = pygame.font.SysFont(None, 56)
 running = True
 dt = 0
 
-temp_cir_rad = 40
 MAX_NAME_LEN = 16
+DEFAULT_PET_NAME = "Steva"
 
 AUTOSAVE_INTERVAL = 30  # seconds
 autosave_timer = 0
 
 food = item("food", items.FOOD, screen, pygame.Vector2(100, GROUND_Y))
 water = item("water", items.WATER, screen, pygame.Vector2(1180, GROUND_Y))
-toy = item("toy", items.TOY, screen, pygame.Vector2(640, GROUND_Y))
-toy.active = False  # not on the field until the toy button is clicked
+bed = item("bed", items.BED, screen, pygame.Vector2(950, GROUND_Y))
+toybox = item("toybox", items.TOYBOX, screen, pygame.Vector2(450, GROUND_Y))
+toy = item("toy", items.TOY, screen, pygame.Vector2(640, GROUND_Y), kind="ball")
+toy.active = False  # not on the field until a toy is picked (or the pet grabs one) from the toybox
+TOY_DEFAULT_POS = pygame.Vector2(toybox.pos.x + 50, GROUND_Y)  # where a freshly-brought-out toy rests
+
+wallet = Wallet()  # the player's currency - not tied to any one pet, see wallet.py
 
 # --- Game state machine ---------------------------------------------------
 # MENU: name a pet and start. PLAYING: the game itself. PAUSED: pause overlay
@@ -38,7 +44,10 @@ STATE_LOAD = "load"
 state = STATE_MENU
 
 pet = None
-name_input = ""
+name_input = DEFAULT_PET_NAME
+context_menu_pos = None  # None = closed; a pos = open there (right-click, in-game only)
+toy_menu_open = False  # toy-selection dropdown, opened by clicking the toybox
+toy_menu_anchor = None  # where to draw it - set fresh each time it opens (toybox doesn't move, but keeps this consistent with context_menu_pos)
 
 
 def safe_save():
@@ -51,7 +60,7 @@ def safe_save():
 
 def start_pet(name):
     global pet
-    pet = npc(name.strip() or "pet", screen, verbose=True)
+    pet = npc(name.strip() or DEFAULT_PET_NAME, screen, verbose=True)
     toy.active = False
 
 
@@ -65,11 +74,13 @@ def list_saved_pets():
 
 BAR_WIDTH, BAR_HEIGHT, BAR_GAP = 200, 18, 8
 
-def draw_stat_bar(x, y, value, color):
+def draw_stat_bar(x, y, value, color, label):
     pygame.draw.rect(screen, "gray20", (x, y, BAR_WIDTH, BAR_HEIGHT))
     fill_width = int(BAR_WIDTH * (value / 100))
     pygame.draw.rect(screen, color, (x, y, fill_width, BAR_HEIGHT))
     pygame.draw.rect(screen, "black", (x, y, BAR_WIDTH, BAR_HEIGHT), 2)
+    text = font.render(label, True, "black")
+    screen.blit(text, (x + BAR_WIDTH + 10, y + (BAR_HEIGHT - text.get_height()) // 2))
 
 GRASS_COLOR = "yellowgreen"
 GRASS_EDGE_COLOR = "darkgreen"
@@ -80,19 +91,21 @@ def draw_ground():
     pygame.draw.rect(screen, GRASS_COLOR, ground_rect)
     pygame.draw.rect(screen, GRASS_EDGE_COLOR, (0, GROUND_Y, screen.get_width(), GRASS_EDGE_HEIGHT))
 
-TOY_BUTTON_RECT = pygame.Rect(screen.get_width() - 120, 20, 100, 40)
-
-def draw_toy_button():
-    pygame.draw.rect(screen, items.COLORS[items.TOY], TOY_BUTTON_RECT, border_radius=6)
-    pygame.draw.rect(screen, "black", TOY_BUTTON_RECT, 2, border_radius=6)
-    label = font.render("Toy", True, "black")
-    screen.blit(label, label.get_rect(center=TOY_BUTTON_RECT.center))
-
 def draw_button(rect, label, color="white"):
     pygame.draw.rect(screen, color, rect, border_radius=6)
     pygame.draw.rect(screen, "black", rect, 2, border_radius=6)
     text = font.render(label, True, "black")
     screen.blit(text, text.get_rect(center=rect.center))
+
+def draw_wallet():
+    """Coin counter, top-right - roughly where the old Toys button used to
+    sit before it became the toybox. Not tied to any single pet - see
+    wallet.py."""
+    cx, cy = screen.get_width() - 130, 38
+    pygame.draw.circle(screen, "gold", (cx, cy), 11)
+    pygame.draw.circle(screen, "black", (cx, cy), 11, 2)
+    text = font.render(str(wallet.currency), True, "black")
+    screen.blit(text, (cx + 18, cy - text.get_height() // 2))
 
 def draw_scene():
     """Draws the game world (ground/items/pet/bars) without advancing
@@ -101,16 +114,19 @@ def draw_scene():
     draw_ground()
     food.draw()
     water.draw()
+    bed.draw()
+    toybox.draw()
     if toy.active:
         toy.draw()
-    pygame.draw.circle(screen, "yellow", pet.target_pos, 8)
-    pygame.draw.circle(screen, "red", pet.pos, temp_cir_rad)
-    draw_stat_bar(20, 20, pet.hunger, items.COLORS[items.FOOD])
-    draw_stat_bar(20, 20 + BAR_HEIGHT + BAR_GAP, pet.thirst, items.COLORS[items.WATER])
-    draw_stat_bar(20, 20 + 2 * (BAR_HEIGHT + BAR_GAP), pet.boredom, items.COLORS[items.TOY])
-    draw_stat_bar(20, 20 + 3 * (BAR_HEIGHT + BAR_GAP), pet.tiredness, "mediumpurple")
-    draw_stat_bar(20, 20 + 4 * (BAR_HEIGHT + BAR_GAP), pet.happiness, "hotpink")
-    draw_toy_button()
+    if pet.active_need is not None or pet.called:
+        pygame.draw.circle(screen, "yellow", pet.target_pos, 8)
+    pet.draw()
+    draw_stat_bar(20, 20, pet.hunger, items.COLORS[items.FOOD], "Hunger")
+    draw_stat_bar(20, 20 + BAR_HEIGHT + BAR_GAP, pet.thirst, items.COLORS[items.WATER], "Thirst")
+    draw_stat_bar(20, 20 + 2 * (BAR_HEIGHT + BAR_GAP), pet.boredom, items.COLORS[items.TOY], "Boredom")
+    draw_stat_bar(20, 20 + 3 * (BAR_HEIGHT + BAR_GAP), pet.tiredness, "mediumpurple", "Tiredness")
+    draw_stat_bar(20, 20 + 4 * (BAR_HEIGHT + BAR_GAP), pet.happiness, "hotpink", "Happiness")
+    draw_wallet()
 
 # --- Menu screen -------------------------------------------------------------
 
@@ -180,12 +196,52 @@ def draw_load_menu(entries):
 
     draw_button(LOAD_BACK_BUTTON_RECT, "Back")
 
+# --- Right-click context menu (in-game) ---------------------------------------
+
+CONTEXT_MENU_OPTION_SIZE = (120, 36)
+CONTEXT_MENU_OPTIONS = ["Call", "Pet", "Fetch"]  # more may join later (e.g. per-item actions)
+
+def context_menu_entries(anchor_pos):
+    """Rects for each option, clamped so the menu stays on-screen. Computed
+    fresh on each access rather than cached (see load_menu_entries - a stale
+    per-frame cache here bit us once already for the load screen)."""
+    w, h = CONTEXT_MENU_OPTION_SIZE
+    x = min(anchor_pos[0], screen.get_width() - w)
+    y = min(anchor_pos[1], screen.get_height() - h * len(CONTEXT_MENU_OPTIONS))
+    entries = []
+    for i, label in enumerate(CONTEXT_MENU_OPTIONS):
+        entries.append((pygame.Rect(x, y + i * h, w, h), label))
+    return entries
+
+def draw_context_menu(anchor_pos):
+    for rect, label in context_menu_entries(anchor_pos):
+        draw_button(rect, label)
+
+# --- Toy menu (in-game) --------------------------------------------------------
+# Opened by clicking the toybox. Selecting a toy that's already out again
+# toggles it off (see the click handler below) rather than needing a
+# separate remove control.
+
+TOY_MENU_OPTIONS = ["Ball", "Bone"]  # more may join later (e.g. tug rope)
+
+def toy_menu_entries(anchor_pos):
+    """Rects for each option, clamped so the menu stays on-screen. Computed
+    fresh on each access, same reasoning as context_menu_entries."""
+    w, h = CONTEXT_MENU_OPTION_SIZE
+    x = min(anchor_pos[0], screen.get_width() - w)
+    y = min(anchor_pos[1], screen.get_height() - h * len(TOY_MENU_OPTIONS))
+    entries = []
+    for i, label in enumerate(TOY_MENU_OPTIONS):
+        entries.append((pygame.Rect(x, y + i * h, w, h), label))
+    return entries
+
+def draw_toy_menu(anchor_pos):
+    for rect, label in toy_menu_entries(anchor_pos):
+        draw_button(rect, label)
+
 # --- Main loop -----------------------------------------------------------------
 
 while running:
-    if state == STATE_LOAD:
-        current_load_entries = load_menu_entries()
-
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             safe_save()
@@ -212,17 +268,69 @@ while running:
                     running = False
 
         elif state == STATE_PLAYING:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if context_menu_pos is not None:
+                # The context menu swallows this frame's clicks/Esc rather
+                # than falling through to normal play controls, so a click
+                # meant to dismiss it can't also feed/pet/etc.
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    context_menu_pos = None
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, label in context_menu_entries(context_menu_pos):
+                        if rect.collidepoint(event.pos):
+                            if label == "Call":
+                                pet.call_to(context_menu_pos)
+                            elif label == "Pet":
+                                pet.pet_interact()
+                            elif label == "Fetch":
+                                pet.request_fetch()
+                            break
+                    context_menu_pos = None
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    context_menu_pos = pygame.Vector2(event.pos)  # reposition
+            elif toy_menu_open:
+                # Same swallow-this-frame's-input approach as the context menu.
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    toy_menu_open = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, label in toy_menu_entries(toy_menu_anchor):
+                        if rect.collidepoint(event.pos) and label in TOY_MENU_OPTIONS:
+                            kind = label.lower()
+                            # Picking the kind that's already out again
+                            # removes it (a toggle); picking a different one
+                            # swaps it out rather than needing two clicks.
+                            if toy.active and toy.kind == kind:
+                                toy.active = False
+                            else:
+                                toy.active = True
+                                toy.kind = kind
+                                toy.place(TOY_DEFAULT_POS)
+                            break
+                    toy_menu_open = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 state = STATE_PAUSED
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                context_menu_pos = pygame.Vector2(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if TOY_BUTTON_RECT.collidepoint(event.pos):
-                    # Throw the toy from wherever it currently sits, in a
-                    # random direction; it falls under gravity and bounces.
-                    toy.active = True
-                    throw_velocity = pygame.Vector2(random.uniform(-450, 450), random.uniform(-650, -450))
-                    toy.throw(throw_velocity)
-                elif pygame.Vector2(event.pos).distance_to(pet.pos) <= temp_cir_rad:
-                    pet.pet_interact()
+                # Checked in the same front-to-back order draw_scene() draws
+                # them (the toy topmost among items, then the toybox/static
+                # items underneath), so a click on an overlap resolves to
+                # whatever is actually on top. Petting moved to the
+                # right-click menu specifically so it can never compete here -
+                # the pet is drawn on top of everything, so left-click would
+                # otherwise always win on any overlap (e.g. a fetched toy
+                # sitting right at its feet).
+                if toy.active and toy.on_ground and toy.contains_point(event.pos):
+                    toy.throw_toward(event.pos)
+                elif toybox.contains_point(event.pos):
+                    toy_menu_open = True
+                    toy_menu_anchor = pygame.Vector2(
+                        toybox.pos.x - CONTEXT_MENU_OPTION_SIZE[0] / 2,
+                        toybox.get_rect().top - CONTEXT_MENU_OPTION_SIZE[1] * len(TOY_MENU_OPTIONS) - 8,
+                    )
+                elif food.get_rect().collidepoint(event.pos):
+                    pet.feed()
+                elif water.get_rect().collidepoint(event.pos):
+                    pet.give_water()
 
         elif state == STATE_PAUSED:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -237,8 +345,9 @@ while running:
                 elif MAIN_MENU_BUTTON_RECT.collidepoint(event.pos):
                     safe_save()
                     pet = None
-                    name_input = ""
+                    name_input = DEFAULT_PET_NAME
                     toy.active = False
+                    toy_menu_open = False
                     state = STATE_MENU
 
         elif state == STATE_LOAD:
@@ -248,7 +357,7 @@ while running:
                 if LOAD_BACK_BUTTON_RECT.collidepoint(event.pos):
                     state = STATE_PAUSED
                 else:
-                    for rect, saved_name in current_load_entries:
+                    for rect, saved_name in load_menu_entries():
                         if rect.collidepoint(event.pos):
                             safe_save()  # keep the outgoing pet's progress
                             start_pet(saved_name)
@@ -259,13 +368,40 @@ while running:
         draw_menu()
 
     elif state == STATE_PLAYING:
-        # Mouse position stands in for the future "player" target.
-        mouse_pos = pygame.Vector2(pygame.mouse.get_pos())
         toy_pos = toy.pos if toy.active else None
-        if toy.active:
+        # A carried toy is held, not falling - physics is paused for it and
+        # its position instead follows the pet directly, below.
+        if toy.active and not pet.carrying_toy:
             toy.physics_update(dt, GROUND_Y, screen.get_width())
-        pet.update(dt, mouse_pos, food.pos, water.pos, toy_pos)
+        mouse_pos = pygame.Vector2(pygame.mouse.get_pos())
+        toy_on_ground = toy.active and toy.on_ground and not pet.carrying_toy
+        pet.update(dt, food.pos, water.pos, toy_pos, bed.pos, toy_on_ground, mouse_pos, toybox.pos)
+
+        if pet.wants_to_throw_toy:
+            # The pet decided to play by itself - same random toss as a
+            # player click on the toy (player throws are deterministic -
+            # see toy.throw_toward() - since the pet isn't "aiming").
+            throw_velocity = pygame.Vector2(random.uniform(-450, 450), random.uniform(-650, -450))
+            toy.throw(throw_velocity)
+            pet.wants_to_throw_toy = False
+        if pet.wants_toy_from_box:
+            toy.active = True
+            toy.place(TOY_DEFAULT_POS)
+            pet.wants_toy_from_box = False
+        if pet.carrying_toy:
+            toy.pos = pet.mouth_pos()
+        if pet.wants_to_drop_toy:
+            toy.place(pygame.Vector2(pet.pos.x, GROUND_Y))
+            pet.wants_to_drop_toy = False
+        if pet.fetch_delivered:
+            wallet.earn(pet.fetch_reward_amount)
+            pet.fetch_delivered = False
+
         draw_scene()
+        if context_menu_pos is not None:
+            draw_context_menu(context_menu_pos)
+        if toy_menu_open:
+            draw_toy_menu(toy_menu_anchor)
 
         autosave_timer += dt
         if autosave_timer >= AUTOSAVE_INTERVAL:
@@ -278,7 +414,7 @@ while running:
         draw_pause_menu()
 
     elif state == STATE_LOAD:
-        draw_load_menu(current_load_entries)
+        draw_load_menu(load_menu_entries())
 
     # flip() the display to put your work on screen
     pygame.display.flip()

@@ -1,25 +1,110 @@
 AI Pet - Controls
 =================
 
-Mouse move        Pet follows your cursor whenever it doesn't need
-                   anything more urgent (food/water/toy/rest).
-Click the pet      Pet it! Boosts happiness (small cooldown between
-                   clicks so spam-clicking doesn't max it out instantly).
-Click "Toy"        Drop (or re-throw) the toy at a random spot on the
-button (top-right)  ground. Once the pet gets bored enough, it'll go
-                   play with it - playing also raises happiness.
-Close window (X)   Quit. Progress (the pet's trained brain + personality)
-                   auto-saves every 30 seconds while playing, and saves
-                   again on close.
-Esc                Also quits, in case the window's close button doesn't
-                   register on your window manager.
+Main menu
+---------
+Type a name        Enter your pet's name (letters/numbers/space/-/_ only).
+                    If a save already exists under that exact name, it's
+                    loaded instead of starting fresh.
+Start / Enter       Begin playing.
+Quit                Close the app.
+
+Playing
+-------
+Right-click          Opens a context menu at your cursor with "Call" (send
+                     the pet here), "Pet" (pet it, from wherever you
+                     right-clicked - see below for why petting moved off
+                     left-click), and "Fetch" (command a fetch round right
+                     now - see Fetch mini-game below; needs still come
+                     first if any are urgent). Click elsewhere or press Esc
+                     to dismiss without acting. The pet does NOT follow
+                     your mouse on its own - use Call to bring it somewhere.
+Click the food       Feed the pet directly - instantly satisfies hunger,
+                     wherever the pet currently is.
+Click the water      Water the pet directly - instantly satisfies thirst,
+                     wherever the pet currently is.
+Click the toybox     Opens a toy-picker menu ("Ball" and "Bone" so far, more
+                     may come later). Picking a toy that's not out brings it
+                     out, at rest, near the box; picking a different one
+                     while one's already out swaps it. Picking the SAME toy
+                     again removes it from the field. Ball and Bone play
+                     identically - only the look's different for now.
+Click the toy        Once a toy is out and sitting still, click it to throw
+                     it - which half of the toy you click sets the
+                     direction (click the right half to throw left, and
+                     vice versa), and how close to the edge you click sets
+                     the power (center = weak, edge = strong). Click it
+                     again once it settles to re-throw. Once the pet gets
+                     bored enough it'll go play with it too - playing also
+                     raises happiness.
+Esc                  Opens the pause menu.
+
+Why petting moved to the right-click menu: the pet is drawn on top of
+everything, so a left-click on it would always win over whatever's
+underneath - like a toy it just fetched back to you. Right-click "Pet"
+works from anywhere, so it's never blocked by what's on the ground.
+
+Pause menu (Esc while playing)
+-------------------------------
+Resume (or Esc again)  Back to the game.
+Save                    Save right now, instead of waiting for autosave.
+Load                    Pick a different saved pet by name to switch to
+                        (your current pet is saved first).
+Back to Main Menu       Save and return to the main menu.
+
+Progress (the pet's trained brain + personality) auto-saves every 30
+seconds while playing, and also saves on Save/Load/Back to Main
+Menu/closing the window.
 
 Needs (bars, top-left): hunger, thirst, boredom, tiredness. Each rises over
 time; the pet will automatically go handle whichever is most urgent once it
-crosses its threshold (or, for tiredness, just stop and rest in place).
+crosses its threshold - food/water/the toy for the first three, and its bed
+for tiredness: it walks over and actually sleeps there (a "ZzZzZz" bubble
+while it does) rather than just stopping wherever it happens to be.
 Happiness is different - it's not something the pet seeks out on its own,
 it just drifts down when ignored and goes up from play/petting.
 
+Idle behavior: whenever nothing is urgent and you haven't called it, the pet
+doesn't just freeze - it picks something to do on its own: stand around,
+wander to a random spot, go nap on the bed (same "ZzZzZz" bubble as urgent
+tiredness sleep - it's resting either way), throw a toy for itself and
+play, or bring a toy over to your cursor for a game of fetch. If no toy is
+out but the toybox is there, it may go grab one out first. Which it tends
+to pick is shaped by its personality (randomized per pet, currently not
+shown in the UI) - and fetch specifically can be TAUGHT: pet it (via the
+right-click menu) shortly after it brings a toy back and that reinforces
+fetch as a favorite, a little more each time; ignore it and that preference
+fades again over a few minutes, so it settles back to playing alone. An
+urgent need always interrupts whatever it's doing; a Call does too, but a
+pending Fetch command just waits for a Call or urgent need to finish first.
+
+Fetch mini-game: every successful delivery earns coins (top-right counter -
+see Currency below), whether the pet decided to fetch on its own or you
+commanded it with the right-click "Fetch" option (which chains into
+grabbing a toy from the toybox first if none is out). Consecutive
+deliveries build a streak - flat for the first couple, then it ramps up
+fast, so a short deliberate streak is worth a lot more than one-off
+fetches. Anything that breaks the chain (the pet getting distracted by
+something else, or an interrupted delivery) resets the streak to zero.
+Commanding a round pays more than letting the pet decide on its own.
+
+Currency: shown as a coin counter, top-right. It belongs to you as the
+player, not to any one pet - switching pets (Load) doesn't reset it.
+Nothing to spend it on yet; that's planned once cosmetics exist.
+
+Vocalizations: every so often the pet pops up a speech bubble - an
+onomatopoeia plus an emoji for the emotion behind it. A happy bark when
+petted, called over, or starting to play; a whine if it wants something and
+you've been slow to notice; a growl instead, not a whine, if it's been
+neglected badly enough to be genuinely upset; a lonely howl if it's just
+been alone a while with nothing it specifically needs. Only one shows at a
+time, on a cooldown, so it won't spam - and none of them show while it's
+asleep (the ZzZzZz bubble takes over instead).
+
 Not implemented yet (ideas for later):
-- Feed or water the pet directly by clicking the food/water items
+- More toy types from the toybox - a tug rope is planned (hold one end and
+  the pet grabs the other for tug-of-war), plus a cat-chasing toy once a
+  cat companion exists
 - Keyboard movement or jumping
+- A "Load" browser directly from the main menu (right now you have to
+  retype a saved pet's exact name there to resume it)
